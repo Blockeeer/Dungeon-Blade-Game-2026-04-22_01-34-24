@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 14ea7607c833b1d44b49650b8d53c977, type: 3}
+  m_Name: Loot_Boss_ForsakenKeep
+  m_EditorClassIdentifier: 
+  guaranteedDrops:
+  - item: {fileID: 11400000, guid: 7e35114dec56e294dacd5d92ecc1a238, type: 2}
+    chance: 0.5
+    guaranteed: 0
+    minQuantity: 1
+    maxQuantity: 1
+  independentRolls:
+  - item: {fileID: 11400000, guid: c080d2d15b947204eb3cfc199d567809, type: 2}
+    chance: 0.7
+    guaranteed: 0
+    minQuantity: 1
+    maxQuantity: 1
+  - item: {fileID: 11400000, guid: 4d0074916cf40d54696c06b4199557a3, type: 2}
+    chance: 0.3
+    guaranteed: 0
+    minQuantity: 1
+    maxQuantity: 1
+  - item: {fileID: 11400000, guid: d76dc7f01ae4f6b43baef216e05b8540, type: 2}
+    chance: 0.3
+    guaranteed: 0
+    minQuantity: 1
+    maxQuantity: 1
+  - item: {fileID: 11400000, guid: 4d46b1a6f8afc5a47a465fa5ef398eb5, type: 2}
+    chance: 0.05
+    guaranteed: 0
+    minQuantity: 1
+    maxQuantity: 1
+  weightedPool:
+  - entry:
+      item: {fileID: 11400000, guid: 9f84fc5fc67504d4fb130124b7711e76, type: 2}
+      chance: 0.5
+      guaranteed: 0
+      minQuantity: 1
+      maxQuantity: 1
+    weight: 5
+  - entry:
+      item: {fileID: 11400000, guid: c080d2d15b947204eb3cfc199d567809, type: 2}
+      chance: 0.5
+      guaranteed: 0
+      minQuantity: 1
+      maxQuantity: 1
+    weight: 5
+  rollWeightedPool: 1
+  guaranteedGoldMin: 150
+  guaranteedGoldMax: 300
+  dungeonTokenAmount: 1
