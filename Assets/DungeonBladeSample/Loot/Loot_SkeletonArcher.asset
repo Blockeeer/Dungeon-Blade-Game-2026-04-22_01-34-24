@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 14ea7607c833b1d44b49650b8d53c977, type: 3}
+  m_Name: Loot_SkeletonArcher
+  m_EditorClassIdentifier: 
+  guaranteedDrops: []
+  independentRolls:
+  - item: {fileID: 11400000, guid: 60c46a9916703264185c07eee416e714, type: 2}
+    chance: 0.12
+    guaranteed: 0
+    minQuantity: 1
+    maxQuantity: 1
+  weightedPool: []
+  rollWeightedPool: 0
+  guaranteedGoldMin: 0
+  guaranteedGoldMax: 0
+  dungeonTokenAmount: 0
