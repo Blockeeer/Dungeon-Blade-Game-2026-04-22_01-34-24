@@ -312,12 +312,35 @@ namespace DungeonBlade.EditorTools
             body.transform.localPosition = new Vector3(0, 1f, 0);
             SetColor(body, new Color(0.9f, 0.85f, 0.3f), emissive: new Color(0.3f, 0.25f, 0.05f));
 
+            // Permanent floating sign so the player can find the NPC across the room.
+            var sign = new GameObject("Sign");
+            sign.transform.SetParent(root.transform, false);
+            sign.transform.localPosition = new Vector3(0, 2.7f, 0);
+            var signText = sign.AddComponent<TextMesh>();
+            signText.text = "BANK";
+            signText.fontSize = 80;
+            signText.alignment = TextAlignment.Center;
+            signText.anchor = TextAnchor.MiddleCenter;
+            signText.characterSize = 0.06f;
+            signText.color = new Color(1f, 0.9f, 0.4f);
+            sign.AddComponent<DungeonBlade.Runtime.Billboard>();
+
+            // "Press E" prompt — hidden by default, BankNPC.cs toggles when in range.
             var prompt = new GameObject("Prompt");
             prompt.transform.SetParent(root.transform, false);
-            prompt.transform.localPosition = new Vector3(0, 2.5f, 0);
+            prompt.transform.localPosition = new Vector3(0, 2.2f, 0);
+            var promptText = prompt.AddComponent<TextMesh>();
+            promptText.text = "Press E to interact";
+            promptText.fontSize = 50;
+            promptText.alignment = TextAlignment.Center;
+            promptText.anchor = TextAnchor.MiddleCenter;
+            promptText.characterSize = 0.05f;
+            promptText.color = new Color(0.85f, 0.95f, 1f);
+            prompt.AddComponent<DungeonBlade.Runtime.Billboard>();
             prompt.SetActive(false);
 
             var npc = root.AddComponent<DungeonBlade.UI.BankNPC>();
+            npc.promptUI = prompt;
             // bankSystem / bankUI references are set by scene builder
             SavePrefab(root, DBEditorMenu.PrefabsPath + "/BankNPC.prefab");
         }

@@ -26,10 +26,12 @@ namespace DungeonBlade.EditorTools
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-            // Lighting
-            MakeDirectionalLight(new Vector3(45, 35, 0));
+            // Lighting — bumped intensity & ambient so the player capsule and
+            // walls aren't washed out into near-black under URP without a skybox.
+            MakeDirectionalLight(new Vector3(45, 35, 0), intensity: 1.7f);
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.35f, 0.4f, 0.5f);
+            RenderSettings.ambientLight = new Color(0.6f, 0.65f, 0.75f);
+            RenderSettings.ambientIntensity = 1.4f;
 
             // Floor
             var floor = BuildFloor("LobbyFloor", Vector3.zero, new Vector2(30, 30), new Color(0.15f, 0.18f, 0.22f));
