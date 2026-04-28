@@ -101,11 +101,14 @@ namespace DungeonBlade.Characters
             if (c == null) return;
             if (detailPortrait != null)
             {
+                // Drop any leftover initial overlay first; we'll re-add it for fallback.
+                var oldOverlay = detailPortrait.transform.Find("Initial");
                 if (c.portrait != null)
                 {
                     detailPortrait.sprite = c.portrait;
                     detailPortrait.color = Color.white;
                     detailPortrait.enabled = true;
+                    if (oldOverlay != null) oldOverlay.gameObject.SetActive(false);
                 }
                 else
                 {
@@ -113,6 +116,8 @@ namespace DungeonBlade.Characters
                     detailPortrait.sprite = null;
                     detailPortrait.color = CharacterPortraitButton.ColorFromIdPublic(c.characterId ?? c.displayName ?? "default");
                     detailPortrait.enabled = true;
+                    CharacterPortraitButton.EnsureInitialOverlay(detailPortrait.transform, c.displayName);
+                    if (oldOverlay != null) oldOverlay.gameObject.SetActive(true);
                 }
             }
             if (detailName != null) detailName.text = c.displayName;
