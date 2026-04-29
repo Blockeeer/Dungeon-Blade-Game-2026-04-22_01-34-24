@@ -111,9 +111,17 @@ namespace DungeonBlade.Characters
             instantiatedModel.transform.localEulerAngles = data.modelRotation;
             instantiatedModel.transform.localScale = Vector3.one * Mathf.Max(0.01f, data.modelScale);
 
+            // Normalize visible character size. Mixamo / mixed-source FBXs can
+            // import at wildly different scales (some come in at 0.5m tall,
+            // others at 1.8m). targetHeight forces a consistent silhouette so
+            // characters don't look shrunken next to NPCs and props.
+            if (data.targetHeight > 0f)
+            {
+                RescaleToHeight(instantiatedModel, data.targetHeight);
+            }
+
             // Auto-align feet to origin (Y=0) if modelOffset wasn't manually set.
-            // Measures the actual lowest point of the skinned mesh and shifts the
-            // model so that point lands at local Y=0 (the Player's feet).
+            // Runs AFTER rescale so bounds reflect the final size.
             if (data.modelOffset == Vector3.zero)
             {
                 AlignFeetToOrigin(instantiatedModel);
@@ -184,6 +192,58 @@ namespace DungeonBlade.Characters
                 if (Application.isPlaying) Destroy(child.gameObject);
                 else DestroyImmediate(child.gameObject);
             }
+        }
+
+        /// <summary>
+        /// Uniformly rescales the instantiated model so its visible mesh AABB
+        /// is `targetHeight` world units tall. Uses the SkinnedMeshRenderer's
+        /// sharedMesh.bounds (mesh-local bind pose) to avoid the unreliable
+        /// world-space AABB on Awake().
+        /// </summary>
+        static void RescaleToHeight(GameObject model, float targetHeight)
+        {
+            float currentHeight = MeasureMeshHeight(model);
+            if (currentHeight <= 0.01f) return;
+            float ratio = targetHeight / currentHeight;
+            // Don't bother rescaling for tiny adjustments — keeps modeller intent.
+            if (ratio > 0.95f && ratio < 1.05f) return;
+            model.transform.localScale *= ratio;
+            Debug.Log($"[CharacterInstantiator] Rescaled '{model.name}' by x{ratio:F2} (was {currentHeight:F2}m, target {targetHeight:F2}m).");
+        }
+
+        static float MeasureMeshHeight(GameObject model)
+        {
+            float minY = float.MaxValue, maxY = float.MinValue;
+            var skinned = model.GetComponentsInChildren<SkinnedMeshRenderer>();
+            foreach (var smr in skinned)
+            {
+                if (smr == null || smr.sharedMesh == null) continue;
+                var mb = smr.sharedMesh.bounds;
+                // Sample top + bottom corners at mesh local origin, then convert
+                // through the SMR transform into the model root's local space.
+                Vector3 worldTop    = smr.transform.TransformPoint(new Vector3(mb.center.x, mb.max.y, mb.center.z));
+                Vector3 worldBottom = smr.transform.TransformPoint(new Vector3(mb.center.x, mb.min.y, mb.center.z));
+                Vector3 localTop    = model.transform.InverseTransformPoint(worldTop);
+                Vector3 localBottom = model.transform.InverseTransformPoint(worldBottom);
+                if (localTop.y > maxY)    maxY = localTop.y;
+                if (localBottom.y < minY) minY = localBottom.y;
+            }
+            if (minY == float.MaxValue)
+            {
+                // Fallback to static MeshRenderers
+                var statics = model.GetComponentsInChildren<MeshRenderer>();
+                foreach (var r in statics)
+                {
+                    if (r == null) continue;
+                    var b = r.bounds;
+                    Vector3 lTop    = model.transform.InverseTransformPoint(new Vector3(b.center.x, b.max.y, b.center.z));
+                    Vector3 lBottom = model.transform.InverseTransformPoint(new Vector3(b.center.x, b.min.y, b.center.z));
+                    if (lTop.y > maxY)    maxY = lTop.y;
+                    if (lBottom.y < minY) minY = lBottom.y;
+                }
+            }
+            if (minY == float.MaxValue || maxY == float.MinValue) return 0f;
+            return Mathf.Max(0f, maxY - minY);
         }
 
         static Transform FindDeepChild(Transform parent, string name)
