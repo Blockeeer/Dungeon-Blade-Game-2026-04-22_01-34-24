@@ -34,6 +34,9 @@ namespace DungeonBlade.Characters
         [Tooltip("Uniform scale applied to the model. Use if the import scale is off (common with Blender exports).")]
         public float modelScale = 1f;
 
+        [Tooltip("If > 0, auto-rescale the model after instantiation so its visible mesh ends up this many world units tall. Useful when FBX files have inconsistent import scales. Set to 0 to disable. Typical adult human height: 1.8.")]
+        public float targetHeight = 1.8f;
+
         [Header("Stat Modifiers (optional — leave at 1.0 for neutral)")]
         [Tooltip("Multiplier on PlayerStats.maxHealth at spawn. 1.1 = +10% HP.")]
         public float hpMultiplier = 1f;

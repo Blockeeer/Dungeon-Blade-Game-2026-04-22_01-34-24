@@ -135,6 +135,140 @@ namespace DungeonBlade.EditorTools
             EditorUtility.DisplayDialog("DungeonBlade", $"Found {guids.Length} CharacterData assets under {CharactersFolder}.", "OK");
         }
 
+        /// <summary>
+        /// Pick a folder of portrait images (PNG/JPG). For each CharacterData
+        /// in the roster, finds the image whose filename most closely matches
+        /// the character's id / displayName, imports it as a Sprite, and
+        /// assigns it to the CharacterData's portrait field.
+        ///
+        /// Matching rules (case-insensitive):
+        ///   - Exact match on characterId, displayName, or rawName
+        ///   - Substring match (image filename contains character key, or vice versa)
+        /// First matching image wins.
+        /// </summary>
+        [MenuItem("DungeonBlade/Characters/Assign Portraits From Folder...")]
+        public static void AssignPortraitsFromFolder()
+        {
+            var charAssets = LoadAllCharacters();
+            if (charAssets.Count == 0)
+            {
+                EditorUtility.DisplayDialog("DungeonBlade",
+                    "No CharacterData assets found. Run 'Build Roster From Folder...' first.", "OK");
+                return;
+            }
+
+            var path = EditorUtility.OpenFolderPanel(
+                "Pick the folder containing portrait images (PNG/JPG)", "", "");
+            if (string.IsNullOrEmpty(path)) return;
+
+            var imageFiles = new List<string>();
+            foreach (var ext in new[] { "*.png", "*.jpg", "*.jpeg" })
+                imageFiles.AddRange(Directory.GetFiles(path, ext, SearchOption.TopDirectoryOnly));
+
+            if (imageFiles.Count == 0)
+            {
+                EditorUtility.DisplayDialog("DungeonBlade",
+                    $"No PNG/JPG images found in:\n{path}", "OK");
+                return;
+            }
+
+            // Copy the images into the project under each character's subfolder
+            // and import them as UI sprites so .portrait can use them directly.
+            int assigned = 0;
+            foreach (var character in charAssets)
+            {
+                var charAssetPath = AssetDatabase.GetAssetPath(character);
+                if (string.IsNullOrEmpty(charAssetPath)) continue;
+                var charDir = Path.GetDirectoryName(charAssetPath).Replace('\\', '/');
+
+                var matchPath = FindBestMatch(imageFiles, character);
+                if (matchPath == null) continue;
+
+                var ext = Path.GetExtension(matchPath);
+                var destAssetPath = $"{charDir}/Portrait_{SanitizeForPath(character.displayName)}{ext}";
+                var destFull = Path.Combine(Application.dataPath,
+                    destAssetPath.Substring("Assets/".Length));
+                try
+                {
+                    File.Copy(matchPath, destFull, overwrite: true);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogError($"[DBCharacterBuilder] Could not copy {matchPath}: {ex.Message}");
+                    continue;
+                }
+
+                AssetDatabase.ImportAsset(destAssetPath, ImportAssetOptions.ForceSynchronousImport);
+                ConfigureAsSprite(destAssetPath);
+
+                var sprite = AssetDatabase.LoadAssetAtPath<Sprite>(destAssetPath);
+                if (sprite == null)
+                {
+                    Debug.LogWarning($"[DBCharacterBuilder] Imported {destAssetPath} but Sprite is null. " +
+                                     "Open the importer and set Texture Type = Sprite (2D and UI).");
+                    continue;
+                }
+
+                Undo.RecordObject(character, "Assign Portrait");
+                character.portrait = sprite;
+                EditorUtility.SetDirty(character);
+                assigned++;
+                Debug.Log($"[DBCharacterBuilder] {character.displayName} ← {Path.GetFileName(matchPath)}");
+            }
+
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+
+            EditorUtility.DisplayDialog("DungeonBlade",
+                $"Assigned portraits to {assigned} of {charAssets.Count} character(s).\n\n" +
+                "Press Play in the Lobby scene to see them on the character select screen.",
+                "OK");
+        }
+
+        static string FindBestMatch(List<string> imagePaths, CharacterData character)
+        {
+            string[] keys = {
+                character.characterId,
+                character.displayName,
+                CleanDisplayName(Path.GetFileNameWithoutExtension(
+                    AssetDatabase.GetAssetPath(character.modelPrefab) ?? ""))
+            };
+
+            foreach (var key in keys)
+            {
+                if (string.IsNullOrEmpty(key)) continue;
+                var keyLower = SanitizeForId(key);
+                foreach (var imgPath in imagePaths)
+                {
+                    var nameLower = SanitizeForId(Path.GetFileNameWithoutExtension(imgPath));
+                    if (nameLower == keyLower) return imgPath;
+                }
+            }
+            // Substring fallback
+            foreach (var key in keys)
+            {
+                if (string.IsNullOrEmpty(key)) continue;
+                var keyLower = SanitizeForId(key);
+                foreach (var imgPath in imagePaths)
+                {
+                    var nameLower = SanitizeForId(Path.GetFileNameWithoutExtension(imgPath));
+                    if (nameLower.Contains(keyLower) || keyLower.Contains(nameLower)) return imgPath;
+                }
+            }
+            return null;
+        }
+
+        static void ConfigureAsSprite(string assetPath)
+        {
+            var importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+            if (importer == null) return;
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.SaveAndReimport();
+        }
+
         /// <summary>Finds every CharacterData in the Characters folder. Used by DBSceneBuilder.</summary>
         public static List<CharacterData> LoadAllCharacters()
         {
