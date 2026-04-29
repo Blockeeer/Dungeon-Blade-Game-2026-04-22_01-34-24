@@ -488,11 +488,17 @@ namespace DungeonBlade.UI
 
         void Awake()
         {
+            // The Lobby scene historically only set BankNPC's position override,
+            // never wired bankUI / bankSystem — so pressing E did nothing because
+            // bankUI was null. Auto-resolve from the scene as a safety net.
+            if (bankUI == null) bankUI = FindObjectOfType<BankUI>(includeInactive: true);
+            if (bankSystem == null) bankSystem = FindObjectOfType<BankSystem>(includeInactive: true);
+
             // Old prefabs only had an empty "Prompt" GameObject and no permanent
             // "Sign" — without these the NPC is just an unmarked yellow capsule.
             // Build them at runtime if missing so the scene works without rebuild.
             if (transform.Find("Sign") == null)
-                CreateBillboardLabel("Sign", "BANK", new Vector3(0, 2.7f, 0), 0.06f, new Color(1f, 0.9f, 0.4f), startActive: true);
+                CreateBillboardLabel("Sign", "BANK", new Vector3(0, 2.9f, 0), 0.18f, new Color(1f, 0.9f, 0.4f), startActive: true);
 
             if (promptUI == null)
             {
@@ -502,7 +508,7 @@ namespace DungeonBlade.UI
                     // Empty placeholder Prompt from the old prefab — replace with a real label.
                     var tm = existing.gameObject.AddComponent<TextMesh>();
                     tm.text = "Press E to interact";
-                    tm.fontSize = 50; tm.characterSize = 0.05f;
+                    tm.fontSize = 60; tm.characterSize = 0.12f;
                     tm.alignment = TextAlignment.Center; tm.anchor = TextAnchor.MiddleCenter;
                     tm.color = new Color(0.85f, 0.95f, 1f);
                     if (existing.GetComponent<DungeonBlade.Runtime.Billboard>() == null)
@@ -513,7 +519,7 @@ namespace DungeonBlade.UI
                 else if (existing == null)
                 {
                     promptUI = CreateBillboardLabel("Prompt", "Press E to interact",
-                        new Vector3(0, 2.2f, 0), 0.05f, new Color(0.85f, 0.95f, 1f), startActive: false);
+                        new Vector3(0, 2.3f, 0), 0.12f, new Color(0.85f, 0.95f, 1f), startActive: false);
                 }
                 else
                 {
