@@ -290,6 +290,11 @@ namespace DungeonBlade.EditorTools
                 if (r.gameObject.name.StartsWith("Z") || r.gameObject.name.Contains("Floor") || r.gameObject.name.Contains("Wall") || r.gameObject.name.Contains("Pillar") || r.gameObject.name.Contains("Ledge") || r.gameObject.name.Contains("Bridge"))
                     GameObjectUtility.SetStaticEditorFlags(r.gameObject, StaticEditorFlags.ContributeGI | StaticEditorFlags.NavigationStatic | StaticEditorFlags.BatchingStatic);
 
+            // NavMesh: bake at build time so enemy NavMeshAgents can pathfind
+            // without requiring the user to manually open Window → AI → Navigation
+            // and click Bake. Uses the AI Navigation package (NavMeshSurface).
+            BuildNavMeshSurfaceAndBake();
+
             // Zone labels (readable text floating in each zone to help navigation)
             MakeZoneLabel("1 · GATE HALL",    new Vector3(0, 5, 15));
             MakeZoneLabel("2 · BARRACKS",     new Vector3(0, 5, 44));
@@ -304,6 +309,35 @@ namespace DungeonBlade.EditorTools
             string path = DBEditorMenu.ScenesPath + "/Dungeon_ForsakenKeep.unity";
             EditorSceneManager.SaveScene(scene, path);
             AssetDatabase.Refresh();
+        }
+
+        // Adds a NavMeshSurface to a NavMesh root GameObject and bakes it.
+        // Uses reflection so this code compiles even if AI Navigation isn't
+        // installed — falls back to logging a hint for the user to bake manually.
+        static void BuildNavMeshSurfaceAndBake()
+        {
+            var surfaceType = System.Type.GetType("Unity.AI.Navigation.NavMeshSurface, Unity.AI.Navigation");
+            if (surfaceType == null)
+            {
+                Debug.LogWarning("[DBSceneBuilder] AI Navigation package not found. " +
+                                 "Bake the NavMesh manually via Window → AI → Navigation → Bake.");
+                return;
+            }
+            var holder = new GameObject("NavMesh");
+            var surface = (Component)holder.AddComponent(surfaceType);
+            // Default: collect all geometry in the scene that's marked NavigationStatic.
+            // Trigger a build by calling BuildNavMesh().
+            var buildMethod = surfaceType.GetMethod("BuildNavMesh");
+            if (buildMethod != null)
+            {
+                buildMethod.Invoke(surface, null);
+                Debug.Log("[DBSceneBuilder] Baked NavMesh for dungeon scene.");
+            }
+            else
+            {
+                Debug.LogWarning("[DBSceneBuilder] NavMeshSurface.BuildNavMesh() not found via reflection — " +
+                                 "bake manually by selecting NavMesh and clicking Bake in the inspector.");
+            }
         }
 
         // ────────── Helpers ──────────
