@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8370e6029456b134ba0645acdd34d136, type: 3}
+  m_Name: Shop_LobbyShopkeeper
+  m_EditorClassIdentifier: 
+  shopName: Lobby Shopkeeper
+  sellPriceMultiplier: 1
+  stockList:
+  - Item: {fileID: 11400000, guid: 11159ab81d3013a4f998cbc52d319e25, type: 2}
+    Quantity: 1
+    PriceOverride: 0
+  - Item: {fileID: 11400000, guid: 8799fb35fc532244e954092c89ac8f53, type: 2}
+    Quantity: 1
+    PriceOverride: 0
+  - Item: {fileID: 11400000, guid: 1934422b53ba5ea468832886a1e03ea6, type: 2}
+    Quantity: 1
+    PriceOverride: 0
+  - Item: {fileID: 11400000, guid: f5d2e14ffc79c4a43ab023483baf33bc, type: 2}
+    Quantity: 1
+    PriceOverride: 0
