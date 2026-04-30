@@ -1881,10 +1881,579 @@ For each chest:
 | Auto-pickup items (no F key needed)      | In `ItemPickup.cs`, add `OnTriggerEnter` that calls `OnInteract` automatically.                          |
 | Drops persist between sessions           | Track placed pickups in a list, serialize their positions/contents to a third save file. (Phase 2 work.) |
 
-## What's NOT in place yet (next milestones)
+## M10 — Main Menu, Settings, Pause, Game Over, scene transitions
 
-- M9 Polish — HUD, audio, VFX, menus
-- M10 Landing/Main Menu wiring
+M10 connects all 4 scenes (`0_LandingScene`, `1_MainMenu`, `2_Lobby`, `3_Dungeon1`) into a real game flow: Landing → Main Menu → New Game / Continue → Lobby → enter Dungeon → die or finish → return to Lobby → Quit. Plus mid-game pause, settings menu (volumes / sensitivity / fullscreen), and game over.
+
+Code:
+
+- [Core/GameManager/FadeLoader.cs](Assets/_Project/Core/GameManager/FadeLoader.cs) — DontDestroyOnLoad fade overlay, fades to black, loads scene async, fades in.
+- [Core/GameManager/SettingsManager.cs](Assets/_Project/Core/GameManager/SettingsManager.cs) — singleton, volumes / sensitivity / fullscreen persisted via PlayerPrefs.
+- [UI/Menus/MainMenuController.cs](Assets/_Project/UI/Menus/MainMenuController.cs) — buttons + Continue-only-if-save-exists logic.
+- [UI/Menus/SettingsUI.cs](Assets/_Project/UI/Menus/SettingsUI.cs) — binds sliders/toggles to SettingsManager. Reusable in MainMenu and PauseMenu.
+- [UI/Menus/PauseController.cs](Assets/_Project/UI/Menus/PauseController.cs) — Esc opens, `Time.timeScale = 0`, Resume/Settings/Lobby/MainMenu/Quit buttons.
+- [UI/Menus/GameOverScreen.cs](Assets/_Project/UI/Menus/GameOverScreen.cs) — listens to `PlayerStats.OnDeath`, fades in after delay, Retry/Lobby/MainMenu buttons.
+- [Bank/Scripts/ScenePortal.cs](Assets/_Project/Bank/Scripts/ScenePortal.cs) — interactable cube/door, F-to-travel between scenes. Used for Lobby→Dungeon and Dungeon→Lobby.
+
+Cross-cutting: [PlayerMovement.cs](Assets/_Project/Player/Scripts/Movement/PlayerMovement.cs) now reads sensitivity from `SettingsManager.Instance.MouseSensitivity` at runtime instead of the SerializeField, so changing the slider applies live.
+
+### 10a — Build the FadeLoader (one-time, lives forever)
+
+The fade overlay must persist across scene loads, so it goes in `0_LandingScene` (which loads first) and uses `DontDestroyOnLoad`.
+
+1. Open `0_LandingScene.unity`.
+2. Right-click Hierarchy → **UI → Canvas**. Name it `FadeCanvas`.
+   - **Canvas** component → **Sort Order** = `1000` (renders on top of everything).
+   - **Canvas Scaler** → UI Scale Mode = `Scale With Screen Size`, Reference = `1920 × 1080`.
+3. Right-click `FadeCanvas` → **Create Empty**. Name `FadeRoot`.
+   - Add Component → **Canvas Group**. Alpha = `0`, Interactable = ✅, Blocks Raycasts = ❌.
+4. Right-click `FadeRoot` → **UI → Image**. Name `FadeImage`. Anchor stretch (Alt+Shift+stretch). Color = solid black, alpha `255`. Raycast Target ❌.
+5. Add Component → **Fade Loader** on `FadeRoot`. Wire fields:
+   - **Fade Group** → drag `FadeRoot`'s CanvasGroup
+   - **Fade Image** → drag `FadeImage`
+   - **Default Fade Duration** = `0.4`
+6. Save scene. The FadeLoader survives all scene loads.
+
+### 10b — Add SettingsManager to LandingScene
+
+Same scene, also persistent.
+
+1. Hierarchy → Create Empty → name `[Settings]`.
+2. Add Component → **Settings Manager**. No fields to wire — uses PlayerPrefs.
+3. Save scene.
+
+### 10c — Build the Main Menu
+
+Open `1_MainMenu.unity`.
+
+**Canvas + buttons:**
+
+1. Right-click → **UI → Canvas** if missing. Configure Canvas Scaler (1920×1080, Match 0.5).
+2. Right-click `Canvas` → **UI → Panel**. Name `MainMenuPanel`. Color dark `(15, 15, 25, 230)`.
+3. Inside `MainMenuPanel`, add a TMP title:
+   - Right-click → **UI → Text - TextMeshPro**. Name `Title`.
+   - Anchor top-center. Pos Y = `-180`. Width `800`, Height `100`. Font Size `64`, Bold, color white. Text = `Dungeon Blade`.
+4. Right-click `MainMenuPanel` → Create Empty → name `ButtonGroup`. Anchor middle-center. Width `300`, Height `300`. Add **Vertical Layout Group** (padding 8, spacing 12, child force expand width ✅). Add **Content Size Fitter** (Vertical Fit = Preferred Size).
+5. Inside `ButtonGroup`, add 4 buttons (right-click → UI → Button - TextMeshPro):
+   - `NewGameButton` — Text = `New Game`
+   - `ContinueButton` — Text = `Continue`
+   - `SettingsButton` — Text = `Settings`
+   - `QuitButton` — Text = `Quit`
+6. Add a small TMP `VersionLabel` at bottom-right of MainMenuPanel. Anchor bottom-right, Pos `(-10, 10)`, Width `120`, Height `30`, Font Size `12`. Text = `v0.1`.
+
+**Settings panel (overlay):** 7. Right-click `Canvas` → **UI → Panel**. Name `SettingsPanel`. Stretch full-screen, color `(15, 15, 25, 230)`. **Disable** by default. 8. Inside SettingsPanel, build the rows.
+
+**8a — Container:**
+
+- Right-click `SettingsPanel` → Create Empty → name `Content`.
+- Rect Transform: Anchor middle-center, Width `700`, Height `560`, Pos `(0, 0)`.
+- Add Component → **Vertical Layout Group**. Padding `(20, 20, 20, 20)`, Spacing `12`, Child Alignment `Upper Center`, Child Force Expand: Width ✅, Height ❌, Child Controls Size: Width ✅, Height ❌.
+- Add Component → **Content Size Fitter**. Vertical Fit = `Preferred Size`.
+- (Optional) Right-click `Content` → UI → Text - TextMeshPro at top → name `SettingsTitle`. Text = `Settings`. Font Size `36`, Alignment center, Bold. Add Component → **Layout Element**, Preferred Height `60`.
+
+**8b — Row template (Master Volume):**
+
+- Right-click `Content` → Create Empty → name `Row_MasterVolume`.
+- Rect Transform: Width auto (driven by parent), Height `40`. Add **Layout Element**: Preferred Height `40`.
+- Add Component → **Horizontal Layout Group**. Padding `(0,0,0,0)`, Spacing `12`, Child Alignment `Middle Left`, Child Force Expand Width ❌, Height ✅, Child Controls Size Width ❌, Height ✅.
+- Inside `Row_MasterVolume`:
+  - Right-click → UI → Text - TextMeshPro → name `Label`. Text = `Master Volume`. Width `200`. Add **Layout Element** → Preferred Width `200`. Font Size `20`, Alignment middle-left.
+  - Right-click → UI → Slider → name `Slider`. Add **Layout Element** → Preferred Width `360`, Flexible Width `1`. Slider component: Min Value `0`, Max Value `1`, Whole Numbers ❌, Value `0.8`.
+  - Right-click → UI → Text - TextMeshPro → name `ValueText`. Text = `80%`. Width `80`. Add **Layout Element** → Preferred Width `80`. Font Size `20`, Alignment middle-right.
+
+**8c — Duplicate the row 3 more times:**
+
+- Select `Row_MasterVolume` → Ctrl+D three times. Rename the copies:
+  - `Row_MusicVolume` (Label = `Music Volume`, Slider Min `0`, Max `1`, Value `0.8`, ValueText = `80%`)
+  - `Row_SfxVolume` (Label = `SFX Volume`, Slider Min `0`, Max `1`, Value `0.8`, ValueText = `80%`)
+  - `Row_Sensitivity` (Label = `Mouse Sensitivity`, Slider **Min `0.01`, Max `1`**, Value `0.2`, ValueText = `0.20`)
+
+**8d — Fullscreen row:**
+
+- Right-click `Content` → Create Empty → name `Row_Fullscreen`. Add **Layout Element** Preferred Height `40`. Add **Horizontal Layout Group** (same settings as 8b row).
+- Inside `Row_Fullscreen`:
+  - Add TMP `Label`, Text = `Fullscreen`, Preferred Width `200`.
+  - Right-click → UI → Toggle → name `Toggle`. Add **Layout Element** Preferred Width `40`. (Toggle's Background + Checkmark stay as-is.)
+
+**8e — Buttons row (bottom):**
+
+- Right-click `Content` → Create Empty → name `Row_Buttons`. Add **Layout Element** Preferred Height `60`. Add **Horizontal Layout Group**: Spacing `20`, Child Alignment `Middle Center`, Child Force Expand Width ✅.
+- Inside `Row_Buttons`:
+  - **ResetButton:**
+    1. Right-click `Row_Buttons` → UI → Button - TextMeshPro → name `ResetButton`.
+    2. Select `ResetButton`. Add Component → **Layout Element**. Check `Preferred Width` = `220`, check `Preferred Height` = `48`.
+    3. Expand `ResetButton` in the Hierarchy → select its auto-created child `Text (TMP)`. In TextMeshPro - Text (UI), set Text = `Reset to Defaults`. Font Size `20`, Alignment center + middle.
+    4. (Optional) Select `ResetButton` again → Image component → Color `(80, 60, 60, 255)` muted red to visually mark it as a destructive action.
+  - **CloseButton:**
+    1. Right-click `Row_Buttons` → UI → Button - TextMeshPro → name `CloseButton`.
+    2. Select `CloseButton`. Add Component → **Layout Element**. Check `Preferred Width` = `160`, check `Preferred Height` = `48`.
+    3. Expand `CloseButton` → select its child `Text (TMP)`. Set Text = `Close`. Font Size `20`, Alignment center + middle.
+    4. (Optional) Image color `(60, 80, 60, 255)` muted green for a "safe" action.
+
+  **Notes for both buttons:**
+  - The Button GameObject created by Unity already has both **Image** and **Button** components. You only need to add **Layout Element** yourself.
+  - The label text lives on the auto-created **child** GameObject named `Text (TMP)` — not on the Button itself.
+  - Do **not** wire the Button's `On Click ()` event in the Inspector. `SettingsUI.cs` registers handlers in code (`closeButton.onClick.AddListener(OnClose)` / `resetButton.onClick.AddListener(OnReset)`).
+  - If the buttons stretch to fill the row instead of using their preferred widths, check that the parent `Row_Buttons` Horizontal Layout Group has **Child Controls Size → Width ❌** (so the Layout Element's Preferred Width drives sizing).
+
+9. Add Component → **Settings UI** on `SettingsPanel`. Wire each field by dragging from the Hierarchy:
+
+   | Inspector field        | Drag from Hierarchy          |
+   | ---------------------- | ---------------------------- |
+   | Master Slider          | `Row_MasterVolume/Slider`    |
+   | Music Slider           | `Row_MusicVolume/Slider`     |
+   | Sfx Slider             | `Row_SfxVolume/Slider`       |
+   | Sensitivity Slider     | `Row_Sensitivity/Slider`     |
+   | Fullscreen Toggle      | `Row_Fullscreen/Toggle`      |
+   | Master Value Text      | `Row_MasterVolume/ValueText` |
+   | Music Value Text       | `Row_MusicVolume/ValueText`  |
+   | Sfx Value Text         | `Row_SfxVolume/ValueText`    |
+   | Sensitivity Value Text | `Row_Sensitivity/ValueText`  |
+   | Close Button           | `Row_Buttons/CloseButton`    |
+   | Reset Button           | `Row_Buttons/ResetButton`    |
+
+   Tip: lock the Inspector (padlock icon top-right) on `SettingsPanel` so it stays selected while you drag children in.
+
+10. Add Component → **Main Menu Controller** on `MainMenuPanel`. Wire each field:
+
+    | Inspector field | Drag from Hierarchy                               |
+    | --------------- | ------------------------------------------------- |
+    | New Game Button | `ButtonGroup/NewGameButton`                       |
+    | Continue Button | `ButtonGroup/ContinueButton`                      |
+    | Settings Button | `ButtonGroup/SettingsButton`                      |
+    | Quit Button     | `ButtonGroup/QuitButton`                          |
+    | Settings Panel  | `SettingsPanel` (the GameObject, not a component) |
+    | Version Label   | `VersionLabel` (TMP_Text)                         |
+
+    Note: Settings Panel must be the **disabled** SettingsPanel GameObject — the controller calls `SetActive(true)` when Settings is clicked.
+
+11. Save scene (`Ctrl+S`). Verify final hierarchy:
+    ```
+    Canvas
+    ├── MainMenuPanel
+    │   ├── Title (TMP)
+    │   ├── ButtonGroup
+    │   │   ├── NewGameButton
+    │   │   ├── ContinueButton
+    │   │   ├── SettingsButton
+    │   │   └── QuitButton
+    │   └── VersionLabel (TMP)
+    └── SettingsPanel  (disabled)
+        └── Content
+            ├── SettingsTitle (TMP, optional)
+            ├── Row_MasterVolume   (Label + Slider + ValueText)
+            ├── Row_MusicVolume    (Label + Slider + ValueText)
+            ├── Row_SfxVolume      (Label + Slider + ValueText)
+            ├── Row_Sensitivity    (Label + Slider + ValueText)
+            ├── Row_Fullscreen     (Label + Toggle)
+            └── Row_Buttons        (ResetButton + CloseButton)
+    ```
+    Press Play. You should see the main menu with 4 buttons. Click **Settings** → SettingsPanel appears, sliders show current values. Move a slider → ValueText updates live. Click **Close** → returns to main menu. Click **New Game** → fades to Lobby.
+
+### 10d — Build the Pause Menu (in Dungeon scene; optional in Lobby)
+
+Open `3_Dungeon1.unity`. The pause menu is a Canvas overlay layered on top of the in-game HUD.
+
+**Pre-req:** the Dungeon scene needs a `[Settings]` GameObject too (same as MainMenu).
+- Hierarchy → Create Empty → name `[Settings]` → Add Component → **Settings Manager** → Save.
+- Without this, opening Settings from the pause menu won't update sliders/values (same SettingsManager.Instance == null bug as before).
+
+**1. Create the PausePanel:**
+
+1. In the Hierarchy, find your existing `Canvas` (the one with HUD/Inventory). Right-click `Canvas` → **UI → Panel** → name `PausePanel`.
+2. Rect Transform: anchor preset **stretch all** (Alt+click bottom-right preset). Left/Top/Right/Bottom = `0`.
+3. Image component → Color = `(0, 0, 0, 200)` (semi-transparent black so the game shows through dimmed).
+4. **Disable** the GameObject (uncheck the checkbox at the top-left of the Inspector). Name turns gray.
+
+**2. Add the title:**
+
+1. Right-click `PausePanel` → **UI → Text - TextMeshPro** → name `Title`.
+2. Rect Transform: anchor **top-center**. Pos Y = `-120`. Width `600`, Height `100`.
+3. TMP component: Text = `PAUSED`. Font Size `56`, Bold, Alignment center+middle, Color white.
+
+**3. Add the button group:**
+
+1. Right-click `PausePanel` → Create Empty → name `ButtonGroup`.
+2. Rect Transform: anchor **middle-center**. Width `320`, Height `400`. Pos `(0, 0)`.
+3. Add Component → **Vertical Layout Group**: Padding `(8,8,8,8)`, Spacing `12`, Child Alignment `Upper Center`, Child Force Expand Width ✅, Height ❌, Child Controls Size Width ✅, Height ❌.
+4. Add Component → **Content Size Fitter**: Vertical Fit = `Preferred Size`.
+
+**4. Add 5 buttons inside `ButtonGroup`:**
+
+For each: right-click `ButtonGroup` → **UI → Button - TextMeshPro** → rename → set child `Text (TMP)` → add **Layout Element** with Preferred Height `48`.
+
+| GameObject name | Child Text |
+|---|---|
+| `ResumeButton` | `Resume` |
+| `SettingsButton` | `Settings` |
+| `ReturnLobbyButton` | `Return to Lobby` |
+| `MainMenuButton` | `Main Menu` |
+| `QuitButton` | `Quit to Desktop` |
+
+**5. Build the in-Dungeon SettingsPanel:**
+
+The cleanest way: replicate §10c steps 7-9 inside the Dungeon Canvas.
+
+1. Right-click `Canvas` → **UI → Panel** → name `SettingsPanel`. Stretch full, color `(15, 15, 25, 230)`. **Disable** by default.
+2. Inside, build the same `Content` container with the 4 sliders + Fullscreen toggle + Reset/Close buttons (see §10c step 8a-8e).
+3. Add Component → **Settings UI** on `SettingsPanel`. Wire all 11 fields per the §10c step 9 table.
+
+**Shortcut (optional):** in the MainMenu scene, right-click `SettingsPanel` → **Prefab → Create Original Prefab...** → save it under `Assets/_Project/UI/Prefabs/SettingsPanel.prefab`. Then drag the prefab into the Dungeon scene's Canvas. The SettingsUI component and all its wiring carry over. (Re-disable the panel after dragging.)
+
+**6. Add the PauseController:**
+
+1. Hierarchy → Create Empty (or pick existing `[Inventory]`) → name `[PauseManager]` if creating new.
+2. Add Component → **Pause Controller**.
+3. Wire each field by drag-and-drop:
+
+   | Inspector field | Drag from Hierarchy |
+   |---|---|
+   | Pause Panel | `Canvas/PausePanel` (the disabled one) |
+   | Settings Panel | `Canvas/SettingsPanel` (the disabled one) |
+   | Resume Button | `PausePanel/ButtonGroup/ResumeButton` |
+   | Settings Button | `PausePanel/ButtonGroup/SettingsButton` |
+   | Return Lobby Button | `PausePanel/ButtonGroup/ReturnLobbyButton` |
+   | Main Menu Button | `PausePanel/ButtonGroup/MainMenuButton` |
+   | Quit Button | `PausePanel/ButtonGroup/QuitButton` |
+   | Persistence | `[Inventory]` GameObject (has Inventory Persistence component) |
+
+   Lock the Inspector on `[PauseManager]` while dragging children in.
+
+**7. Save scene** (`Ctrl+S`). Verify final hierarchy:
+
+```
+Canvas
+├── InventoryPanel              (existing, disabled)
+├── PausePanel                  (disabled)
+│   ├── Title (TMP — "PAUSED")
+│   └── ButtonGroup
+│       ├── ResumeButton
+│       ├── SettingsButton
+│       ├── ReturnLobbyButton
+│       ├── MainMenuButton
+│       └── QuitButton
+└── SettingsPanel               (disabled)
+    └── Content
+        ├── Row_MasterVolume
+        ├── Row_MusicVolume
+        ├── Row_SfxVolume
+        ├── Row_Sensitivity
+        ├── Row_Fullscreen
+        └── Row_Buttons (Reset + Close)
+
+[PauseManager]                  (root, has Pause Controller)
+[Settings]                      (root, has Settings Manager)
+```
+
+**8. Test in Play mode:**
+
+1. Press Play → enter Dungeon (via portal from Lobby, or set Dungeon as the play scene).
+2. Press **Esc** → PausePanel appears, time freezes (`Time.timeScale = 0`), cursor unlocks.
+3. Click **Settings** → SettingsPanel overlays the pause menu. Sliders work.
+4. Press **Esc** again → SettingsPanel closes (the controller closes child panel first, then pause on next press).
+5. Click **Resume** → game unpauses, cursor re-locks.
+6. Re-pause → click **Return to Lobby** → save fires, fade to Lobby.
+7. Re-pause → click **Quit to Desktop** → save fires, exits Play (or app in build).
+
+**Common issues:**
+
+- **Esc does nothing** → no PauseController in scene, or it's on a disabled GameObject. Confirm `[PauseManager]` is in Hierarchy and enabled.
+- **Esc opens pause but Inventory was already open** → expected. PauseController checks `MenuState.IsAnyOpen` and refuses to open over another menu. Close Inventory first.
+- **Cursor stays locked when paused** → PauseController.Open sets `Cursor.lockState = None`. If still locked, something else (maybe PlayerMovement) is forcing it back. Check Console for repeated lock calls.
+- **Buttons do nothing** → likely a wiring gap. Re-check all 8 fields in PauseController.
+
+Repeat for `2_Lobby.unity` if you want pause-during-lobby (useful for accessing Settings without leaving NPCs). Same steps; lobby's PauseController references the lobby scene's own PausePanel/SettingsPanel.
+
+### 10e — Build the Game Over Screen (Dungeon scene)
+
+Open `3_Dungeon1.unity`. The Game Over screen is a fullscreen overlay that appears when the player dies.
+
+**1. Create the panel:**
+1. In the Hierarchy, right-click your `Canvas` → **UI → Panel** → name `GameOverPanel`.
+2. Rect Transform: anchor preset **stretch all** (Alt+click bottom-right preset). Left/Top/Right/Bottom = `0`.
+3. Image component → Color = `(0, 0, 0, 230)` (near-opaque black).
+4. **Disable** the GameObject (uncheck the checkbox at the top-left of the Inspector).
+
+**2. Add the "You Died" header:**
+1. Right-click `GameOverPanel` → **UI → Text - TextMeshPro** → name `Title`.
+2. Rect Transform: anchor **top-center**. Pos Y = `-180`. Width `800`, Height `140`.
+3. TMP component:
+   - Text = `You Died`
+   - Font Size = `72`
+   - Bold ✅
+   - Alignment = center + middle
+   - Color = red (use the Color field → set RGB `200, 30, 30, 255`)
+4. (Optional) Add Outline material or a drop shadow via TMP's "Underlay" effect for impact.
+
+**3. Add the button group:**
+1. Right-click `GameOverPanel` → Create Empty → name `ButtonGroup`.
+2. Rect Transform: anchor **middle-center**. Width `300`, Height `240`. Pos `(0, 0)`.
+3. Add Component → **Vertical Layout Group**: Padding `(8,8,8,8)`, Spacing `12`, Child Alignment `Upper Center`, Child Force Expand Width ✅, Height ❌, Child Controls Size Width ✅, Height ❌.
+4. Add Component → **Content Size Fitter**: Vertical Fit = `Preferred Size`.
+
+**4. Add 3 buttons inside `ButtonGroup`:**
+
+For each: right-click `ButtonGroup` → **UI → Button - TextMeshPro** → rename → set child `Text (TMP)` → Add Component → **Layout Element** → Preferred Height `48`.
+
+| GameObject name | Child Text |
+|---|---|
+| `RetryButton` | `Retry` |
+| `LobbyButton` | `Return to Lobby` |
+| `MainMenuButton` | `Main Menu` |
+
+**5. Add the Game Over Screen component:**
+1. Select `GameOverPanel` in the Hierarchy.
+2. Add Component → **Game Over Screen**.
+3. Wire each field:
+
+   | Inspector field | Drag from Hierarchy |
+   |---|---|
+   | Panel | `GameOverPanel` (itself — drag the same GameObject onto its own field) |
+   | Player Stats | `Player` (has the PlayerStats component) |
+   | Retry Button | `ButtonGroup/RetryButton` |
+   | Lobby Button | `ButtonGroup/LobbyButton` |
+   | Main Menu Button | `ButtonGroup/MainMenuButton` |
+   | Show Delay | `1.0` (a 1-second black-screen pause before buttons appear) |
+
+   Tip: lock the Inspector on `GameOverPanel` so the Inspector stays focused while you drag children in.
+
+**6. Save scene** (Ctrl+S). Verify hierarchy:
+
+```
+Canvas
+└── GameOverPanel               (disabled)
+    ├── Title (TMP — "You Died", red)
+    └── ButtonGroup
+        ├── RetryButton
+        ├── LobbyButton
+        └── MainMenuButton
+```
+
+**7. Test in Play mode:**
+1. Press Play → enter Dungeon → let an enemy kill you (or set HP to 1 and run into a hit).
+2. After the player dies, wait ~1 second → GameOverPanel fades in, time freezes, cursor unlocks.
+3. Click **Retry** → reloads the Dungeon (player respawns at start, save state restored).
+4. Click **Return to Lobby** → fades to Lobby.
+5. Click **Main Menu** → fades to MainMenu.
+
+**Common issues:**
+- **GameOverPanel never appears** → the Player Stats field isn't wired. GameOverScreen subscribes to `playerStats.OnDeath` in Start. Without the wiring, no event fires.
+- **Buttons unresponsive** → `Time.timeScale = 0` is set when the panel shows; that's expected. UI buttons still work because they use unscaled time.
+- **Cursor stays locked** → confirm you set `Cursor.lockState = None` in the Show() method (already in code).
+
+### 10f — Build the Lobby ↔ Dungeon portals
+
+ScenePortal extends `Interactable`, so it uses the same `[F]` press flow as NPCs/chests. The player's `PlayerInteractor` (added in M7) detects the closest interactable and triggers it.
+
+**1. Create the portal material (once, reused):**
+1. Project window → navigate to `Assets/_Project/Materials/`.
+2. Right-click → **Create → Material** → name `M_Portal_Dungeon`.
+3. Inspector → Albedo color → set RGB `120, 30, 30, 255` (dark red).
+4. (Optional) Set Emission ✅ → color same dark red, intensity `1.0` so the portal glows.
+
+**2. Lobby portal (enters dungeon):**
+
+1. Open `2_Lobby.unity`.
+2. Hierarchy → right-click → **3D Object → Cube** → name `Portal_ToDungeon`.
+3. Transform:
+   - Position: somewhere visible from the player spawn (e.g. against a wall opposite the NPCs).
+   - Rotation: face the player approach direction (Y rotation as needed).
+   - Scale: `(2, 3, 0.5)` for a door-like silhouette.
+4. **Apply material:**
+   - Drag `M_Portal_Dungeon` from Project window onto the Cube in Scene view (or onto its Mesh Renderer's Material slot in the Inspector).
+5. **Replace the default Box Collider with a Sphere Collider:**
+   - In the Inspector, click the gear icon on Box Collider → **Remove Component**.
+   - Add Component → **Sphere Collider**.
+   - Center `(0, 0, 0)`, Radius `1.5`.
+   - **Is Trigger** = ❌ (so the player physically can't pass through; they have to interact).
+6. Add Component → **Scene Portal**. Wire fields:
+
+   | Inspector field | Value |
+   |---|---|
+   | Prompt Text | `Press [F] to enter Forsaken Keep` |
+   | Target Scene | `3_Dungeon1` |
+   | Persistence | drag `[Inventory]` GameObject from Hierarchy |
+   | Save Before Transition | ✅ |
+
+   Note: `Target Scene` must be a string matching the scene file name exactly (case-sensitive). The defaults from `SceneLoader.cs` are `0_LandingScene`, `1_MainMenu`, `2_Lobby`, `3_Dungeon1`.
+7. (Optional polish) Add a TMP world-space label "Forsaken Keep" floating above the portal — right-click `Portal_ToDungeon` → **3D Object → Text - TextMeshPro** → set text + scale.
+8. Save scene.
+
+**3. Dungeon exit (back to Lobby):**
+
+1. Open `3_Dungeon1.unity`.
+
+2. **Create the lobby material (optional, for visual contrast):**
+   - Project window → `Assets/_Project/Materials/`.
+   - Right-click → **Create → Material** → name `M_Portal_Lobby`.
+   - Inspector → Albedo → RGB `30, 80, 120, 255` (blue).
+   - (Optional) Emission ✅, same blue, intensity `1.0`.
+
+3. **Create the portal cube:**
+   - Hierarchy → right-click → **3D Object → Cube** → name `Portal_ToLobby`.
+   - Transform:
+     - **Position:** at the dungeon entrance — where the player spawns. (Tip: select the Player GameObject, copy its position, then offset slightly so the player doesn't spawn inside the portal — e.g. 2 units behind it.)
+     - **Rotation:** face it toward where the player will be coming from (Y rotation 180° if the player approaches from behind, etc.).
+     - **Scale:** `(2, 3, 0.5)` (door-shaped).
+
+4. **Apply the material:**
+   - Drag `M_Portal_Lobby` from Project window onto the cube in the Scene view (or onto the Mesh Renderer's Material slot).
+
+5. **Replace the Box Collider with a Sphere Collider:**
+   - Inspector → Box Collider → gear icon → **Remove Component**.
+   - Add Component → **Sphere Collider** → Center `(0, 0, 0)`, Radius `1.5`.
+   - **Is Trigger** = ❌.
+
+6. **Add Scene Portal component and wire it:**
+
+   | Inspector field | Value |
+   |---|---|
+   | Prompt Text | `Press [F] to return to Lobby` |
+   | Target Scene | `2_Lobby` |
+   | Persistence | drag `[Inventory]` GameObject from Hierarchy |
+   | Save Before Transition | ✅ |
+
+7. **(Optional polish) Add the floating label:**
+   - Right-click `Portal_ToLobby` → **3D Object → Text - TextMeshPro** → name `PortalLabel`.
+   - Transform: Position `(0, 2.2, 0)`, Rotation `(0, 0, 0)`, Scale `(0.05, 0.05, 0.05)`.
+   - TMP component: Text = `Lobby`, Font Size `36`, Bold, Alignment center+middle, Color white (or match portal blue).
+   - Add Component → **Billboard** (the script created earlier in `Assets/_Project/Core/Utilities/Billboard.cs`). Lock Y Axis ✅.
+
+8. **Save scene** (Ctrl+S).
+
+**4. Test the portals:**
+1. Play from MainMenu → New Game → Lobby loads.
+2. Walk near `Portal_ToDungeon`. The "Press [F] to enter Forsaken Keep" prompt should appear (PlayerInteractor handles the prompt UI).
+3. Press F → save fires (check Console for `[Save]` log) → fade to Dungeon.
+4. In Dungeon, walk to `Portal_ToLobby` → F → fades back to Lobby.
+
+**Common issues:**
+- **No prompt appears when near the portal** → either Sphere Collider radius too small, or the portal lacks the `Interactable` script (Scene Portal extends it, so confirm Scene Portal component is present).
+- **F press does nothing** → check that Player has a `PlayerInteractor` component (M7). Without it, no interaction is detected.
+- **Scene won't load** → the target scene isn't in Build Settings. See §10g for the fix (or run `DungeonBlade > Build Settings > Sync Scenes`).
+
+### 10g — Wire scene order in Build Settings + LandingLoader
+
+**1. Confirm all scenes are in Build Settings:**
+
+1. **File → Build Settings** (Ctrl+Shift+B).
+2. The "Scenes In Build" list should contain (in order):
+   - `Scenes/0_LandingScene` (index 0)
+   - `Scenes/1_MainMenu` (index 1)
+   - `Scenes/2_Lobby` (index 2)
+   - `Scenes/3_Dungeon1` (index 3)
+3. If any are missing: open the scene in the Editor → in Build Settings, click **Add Open Scenes**. Drag in the list to reorder if needed.
+4. **Shortcut:** top menu → **DungeonBlade → Build Settings → Sync Scenes** auto-populates this list.
+
+**2. LandingLoader configuration:**
+
+`LandingLoader` is the script that holds the splash/landing scene briefly, then loads MainMenu. It also auto-spawns persistent systems (`[GameManager]`, `[InputManager]`) the first time the game runs.
+
+1. **Open the scene:** double-click `Assets/Scenes/0_LandingScene.unity` in the Project window.
+
+2. **Find the LandingLoader GameObject:**
+   - In the Hierarchy, look for a root GameObject named `[Bootstrap]`, `[Loader]`, `[Landing]`, or similar — whatever you named it during M10a.
+   - If you don't see one: select **any** root GameObject in the Hierarchy, then in the Inspector click **Add Component** → search `Landing Loader`. Or create a new empty: right-click Hierarchy → Create Empty → name `[Bootstrap]` → Add Component → **Landing Loader**.
+
+3. **Inspector settings (exact field names from the script):**
+
+   | Inspector field | Value | What it does |
+   |---|---|---|
+   | Next Scene | `1_MainMenu` | The scene loaded after the splash. String must match the scene file name exactly (case-sensitive). Default is fine. |
+   | Min Display Seconds | `0.5` | Minimum time the landing scene stays visible. Default is `0.5`. Bump to `1.5` for a longer splash. |
+
+4. **(Optional) Polish the landing visual:**
+   - Add a Canvas with a logo Image (Sprite) and/or a TMP "Dungeon Blade" title.
+   - Add a `[Fader]` GameObject with **FadeLoader** component if not already there (so the transition into MainMenu fades).
+   - Add a simple background Image (dark color or splash art).
+
+5. **Verify autospawn behavior:**
+   - LandingLoader auto-creates `[GameManager]` and `[InputManager]` if they don't exist (via `EnsureSystem<T>()`).
+   - This means you don't need to manually place those GameObjects — they spawn at runtime and persist via `DontDestroyOnLoad`.
+   - The first scene load through LandingLoader is what sets up the global singletons for the entire session.
+
+6. **Save scene** (Ctrl+S) if you changed anything.
+
+**Test the splash:**
+- Press Play in `0_LandingScene` → Unity holds for `Min Display Seconds` (0.5s default) → fades to MainMenu.
+- Console should show no errors. If "Scene couldn't be loaded" appears, the `Next Scene` string is wrong or `1_MainMenu` isn't in Build Settings (re-run Sync Scenes from §10g step 1).
+
+**3. FadeLoader present in every scene that uses fading:**
+
+The `FadeLoader` is `DontDestroyOnLoad`, so it persists once spawned. But it must exist in the **first scene loaded** (`0_LandingScene`) for fades to work in subsequent scenes.
+
+1. Open `0_LandingScene.unity`.
+2. Confirm there's a `[Fader]` GameObject (or similar) with the FadeLoader component + a Canvas + CanvasGroup + Image.
+3. If missing: see §10a for setup.
+
+### 10h — Test the full game loop
+
+End-to-end smoke test. Run this once from a clean save to validate every M10 piece works together.
+
+**1. Pre-test cleanup:**
+
+1. Save all open scenes (Ctrl+S in each).
+2. Top menu → **DungeonBlade → Save Data → Reset ALL** (clears profile.json + bank.json so you start fresh).
+3. Open `0_LandingScene.unity` so Play starts there.
+
+**2. Run the loop:**
+
+| Step | Expected behavior | If broken, check |
+|---|---|---|
+| Press Play | Landing screen appears (logo/splash). Fades to MainMenu after ~1.5s. | LandingLoader.TargetScene = `1_MainMenu`; FadeLoader exists in scene |
+| MainMenu loads | 4 buttons visible. **Continue** is grayed out (no save). | MainMenuController.Continue Button wired; profile.json doesn't exist yet |
+| Click **Settings** | SettingsPanel overlays MainMenu. Sliders/toggle show defaults. | SettingsManager exists in scene; SettingsUI wired |
+| Adjust Master slider | ValueText updates live (e.g. `80%` → `60%`). | All 4 ValueText fields wired |
+| Click **Close** | Returns to MainMenu. | CloseButton wired; SettingsUI.OnClose runs |
+| Click **New Game** | Fades to Lobby. profile.json gets deleted first. | NewGameButton wired; Lobby in Build Settings |
+| Lobby loads | Player spawns, NPCs visible (Banker + Shopkeeper). | LobbyManager prefab present |
+| Walk to `Portal_ToDungeon` | "Press [F] to enter Forsaken Keep" prompt appears. | Sphere Collider radius; PlayerInteractor on Player |
+| Press F | Inventory saves; fades to Dungeon. | ScenePortal wired; Dungeon in Build Settings |
+| Dungeon loads | Player spawns at start. Enemies in zones. | DungeonManager spawn point set |
+| Press **Esc** | PausePanel appears, time freezes, cursor unlocks. | PauseController in scene; PausePanel wired |
+| Click Settings (in Pause) | Dungeon-scene SettingsPanel overlays. Sliders work. | Dungeon `[Settings]` GameObject + SettingsUI wired |
+| Press Esc → Click **Resume** | Game unpauses; cursor relocks. | ResumeButton wired |
+| Take damage until death | After 1s black, GameOverPanel appears. | GameOverScreen wired; PlayerStats.OnDeath fires |
+| Click **Retry** | Dungeon reloads; player respawns at start. | RetryButton wired; SceneLoader handles current scene name |
+| Die again → Click **Return to Lobby** | Save fires; fades to Lobby. Last bank/inventory preserved. | LobbyButton wired |
+| Re-enter Dungeon → Pause → **Quit to Desktop** | Save fires; Play mode exits. | QuitButton wired |
+| Press Play again from `0_LandingScene` | Landing → MainMenu. **Continue** is now enabled (save exists). | profile.json was created; MainMenuController checks `SaveSystem.HasProfile` |
+
+**3. Common test failures:**
+
+- **"Continue" never enables** → SaveSystem isn't writing profile.json. Check Console for `[Save]` log on each scene transition.
+- **Settings changes don't persist between scenes** → SettingsManager uses PlayerPrefs (auto-saves). If they reset, check that `OnEnable` reads from PlayerPrefs.
+- **Pause Esc doesn't open in Lobby** → PauseController is Dungeon-only by default. Add it to Lobby per §10d's last paragraph if you want lobby-pause.
+- **Bank/inventory empty after retry** → `InventoryPersistence.LoadOnAwake` not running. Confirm `[Inventory]` GameObject exists in the Dungeon scene with InventoryPersistence component.
+
+**4. Final commit checkpoint:**
+
+If all 19 rows pass, M10 is complete. Recommended commit message:
+```
+M10 complete — full menu flow (Main Menu, Pause, Game Over, scene portals)
+```
+
+### 10i — Tuning + extending
+
+| Goal                                                         | Knob                                                                                            |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Faster fade transitions                                      | Lower `Default Fade Duration` on FadeLoader.                                                    |
+| Settings open faster from anywhere                           | Add a Settings shortcut key in `PlayerInputActions.cs`.                                         |
+| Multi-slot saves                                             | Phase 2 — extend `SaveSystem` to take a slot ID, expand MainMenu UI.                            |
+| Auto-pause when window loses focus                           | In PauseController.Awake, hook `Application.focusChanged += paused => { if (paused) Open(); }`. |
+| Settings affect actual audio (not just AudioListener.volume) | Wire `AudioMixer` exposed parameters in M9 polish.                                              |
+
+## Phase 1 complete
+
+All 10 milestones are now in place. From here, **M9 polish** is the remaining work:
+
+- HUD (HP/stamina/EXP bars, gold readout, ammo count, boss HP bar)
+- Audio (combat SFX, ambient music, UI clicks, footsteps)
+- VFX (hit particles, level-up flash, gold sparkle, telegraph indicators)
+- Camera shake on heavy impacts
+- Real models replacing placeholder cubes
+- Item icons in inventory
+- Item rarity tiers
 
 ## Save data location
 

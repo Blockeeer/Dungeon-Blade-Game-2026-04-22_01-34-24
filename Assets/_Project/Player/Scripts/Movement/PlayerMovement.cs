@@ -135,7 +135,8 @@ namespace DungeonBlade.Player
 
         void UpdateLook()
         {
-            Vector2 look = _input.Look.ReadValue<Vector2>() * lookSensitivity;
+            float sens = SettingsManager.Instance != null ? SettingsManager.Instance.MouseSensitivity : lookSensitivity;
+            Vector2 look = _input.Look.ReadValue<Vector2>() * sens;
             _yaw += look.x;
             _pitch = Mathf.Clamp(_pitch - look.y, minPitch, maxPitch);
 
