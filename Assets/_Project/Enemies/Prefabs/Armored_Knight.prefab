@@ -171,6 +171,7 @@ MonoBehaviour:
   flashColor: {r: 1, g: 0, b: 0, a: 1}
   flashDuration: 0.08
   deathFadeDelay: 2
+  lootTable: {fileID: 11400000, guid: 88985151d81d57b458b0ee94b1edd636, type: 2}
   hitRadius: 1.6
   hitForwardOffset: 1.6
   knockback: 8

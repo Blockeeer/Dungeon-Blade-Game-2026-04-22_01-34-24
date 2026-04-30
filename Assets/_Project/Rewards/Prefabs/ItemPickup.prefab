@@ -29,7 +29,7 @@ Transform:
   m_GameObject: {fileID: 5266842116123519327}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -3.43, y: 7.961326, z: -12.7838}
+  m_LocalPosition: {x: -3.43, y: 1, z: -12.7838}
   m_LocalScale: {x: 0.4, y: 0.4, z: 0.4}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -119,7 +119,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   promptText: Press [F] to interact
-  item: {fileID: 0}
+  item: {fileID: 11400000, guid: a50d3239b30df964cb9ac6e06f8f9605, type: 2}
   quantity: 1
   bobAmplitude: 0.15
   bobSpeed: 2
