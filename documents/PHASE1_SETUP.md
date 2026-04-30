@@ -1585,7 +1585,7 @@ If something breaks:
 
 M8 connects everything from M4–M7. Enemies now drop items + gold + EXP, bosses drop guaranteed loot, chests can be placed anywhere, and the player levels up with stat gains.
 
-Code lives under [Assets/_Project/Rewards/Scripts/](Assets/_Project/Rewards/Scripts/):
+Code lives under [Assets/\_Project/Rewards/Scripts/](Assets/_Project/Rewards/Scripts/):
 
 - [LootTable.cs](Assets/_Project/Rewards/Scripts/LootTable.cs) — ScriptableObject defining `{Item, dropChance, minQty, maxQty}` rolls + `{minGold, maxGold}` + `experience`.
 - [DropSpawner.cs](Assets/_Project/Rewards/Scripts/DropSpawner.cs) — static helper that rolls a LootTable and instantiates pickups around a position. Also exposes `DropPrefabBindings` MonoBehaviour to register the pickup prefabs at scene start.
@@ -1595,6 +1595,7 @@ Code lives under [Assets/_Project/Rewards/Scripts/](Assets/_Project/Rewards/Scri
 - [ExperienceSystem.cs](Assets/_Project/Rewards/Scripts/ExperienceSystem.cs) — singleton, level cap 10, exponential curve (level N→N+1 = `100 * 2^(N-1)` EXP), grants +10 max HP / +5 max stamina per level.
 
 **Cross-cutting changes:**
+
 - [EnemyBase.cs](Assets/_Project/Enemies/AI/EnemyBase.cs) — added `lootTable` field. On death, calls `DropSpawner.SpawnLoot()`.
 - [PlayerStats.cs](Assets/_Project/Player/Scripts/PlayerStats/PlayerStats.cs) — added `AddMaxHealth` / `AddMaxStamina` methods (used by ExperienceSystem on level-up).
 - [InventoryPersistence.cs](Assets/_Project/Inventory/Scripts/InventoryPersistence.cs) — now also persists level + EXP via `PlayerProfile.level` / `experience`.
@@ -1604,6 +1605,7 @@ Code lives under [Assets/_Project/Rewards/Scripts/](Assets/_Project/Rewards/Scri
 Both pickups are tiny placeholder cubes for Phase 1. Real models / VFX are M9.
 
 **Sub-step 8a-1: Build the ItemPickup prefab**
+
 1. Hierarchy → 3D Object → **Cube**. Name `ItemPickup`.
 2. Scale to `(0.4, 0.4, 0.4)` — small enough to be unobtrusive on the floor.
 3. Tint via material — create `M_ItemPickup` (light blue, `100, 200, 255`). Drag onto cube.
@@ -1614,6 +1616,7 @@ Both pickups are tiny placeholder cubes for Phase 1. Real models / VFX are M9.
 8. Delete the scene copy.
 
 **Sub-step 8a-2: Build the GoldPickup prefab**
+
 1. Hierarchy → 3D Object → **Cube**. Name `GoldPickup`.
 2. Scale to `(0.25, 0.25, 0.25)` — smaller than item pickups.
 3. Create `M_Gold` material — RGB `255, 215, 60` (gold yellow). Drag onto cube.
@@ -1627,6 +1630,7 @@ Both pickups are tiny placeholder cubes for Phase 1. Real models / VFX are M9.
 `DropSpawner` is static — needs prefab references registered at runtime. Use the `DropPrefabBindings` component for this.
 
 In **each scene that has enemies or chests** (`3_Dungeon1.unity` for now; Lobby doesn't drop loot):
+
 1. Hierarchy → Create Empty at scene root → name `[DropPrefabs]`.
 2. Add Component → **Drop Prefab Bindings**.
 3. Wire fields:
@@ -1637,6 +1641,7 @@ In **each scene that has enemies or chests** (`3_Dungeon1.unity` for now; Lobby 
 ### 8b — Add the ExperienceSystem
 
 In **`3_Dungeon1.unity`** AND **`2_Lobby.unity`** (both scenes — so the player keeps leveling state in both):
+
 1. Hierarchy → Create Empty at scene root → name `[Experience]`.
 2. Add Component → **Experience System**.
 3. Wire fields:
@@ -1645,59 +1650,178 @@ In **`3_Dungeon1.unity`** AND **`2_Lobby.unity`** (both scenes — so the player
 
 ### 8c — Create LootTable assets
 
-Right-click in `Assets/_Project/Rewards/` (create folder if missing) → **Create → DungeonBlade → Loot Table**. Name and configure each:
+A LootTable is a ScriptableObject (`.asset` file in your Project window) that defines what an enemy drops on death. Each LootTable has **3 separate Inspector sections**, not one list:
+
+```
+LootTable Inspector layout:
+
+▼ Item Rolls (the drop list)
+   Rolls (Size: N)
+     Element 0
+       Item: <reference>
+       Drop Chance: 0.0–1.0
+       Min Quantity: int
+       Max Quantity: int
+     Element 1
+       ...
+
+▼ Gold
+   Min Gold: int
+   Max Gold: int
+
+▼ Experience
+   Experience: int
+```
+
+- **Item Rolls** = the list of possible item drops. Each row rolls _independently_ against its DropChance — a 70% common + 5% rare can drop both, neither, or just one.
+- **Gold** = a min–max range. Random integer in this range is dropped (set both to 0 to drop no gold).
+- **Experience** = single value granted to the player when this LootTable is rolled.
+
+**Sub-step 8c-1: Create the folder and 6 LootTable assets**
+
+1. In Project window → navigate to `Assets/_Project/Rewards/` (if `Rewards` doesn't exist, create the folder first).
+2. Right-click empty space → **Create → DungeonBlade → Loot Table**. Name the new file `Loot_SkeletonSoldier`.
+3. Repeat 5 more times for: `Loot_SkeletonArcher`, `Loot_ArmoredKnight`, `Loot_UndeadWarlord`, `Loot_BasicChest`, `Loot_BossChest`.
+
+You should now see 6 .asset files in `Assets/_Project/Rewards/`.
+
+**Sub-step 8c-2: Fill each LootTable**
+
+Click each asset → use the Inspector to fill the 3 sections according to the tables below.
+
+---
 
 **Loot_SkeletonSoldier:**
-- **Rolls** Size = 1
-  - Element 0: Item = `Item_BoneFragment`, Drop Chance = `0.7`, Min Qty = `1`, Max Qty = `1`
-- **Min Gold** = `5`, **Max Gold** = `15`
-- **Experience** = `25`
+
+| Section                | Field        | Value               |
+| ---------------------- | ------------ | ------------------- |
+| Item Rolls             | Rolls Size   | `1`                 |
+| Item Rolls → Element 0 | Item         | `Item_BoneFragment` |
+| Item Rolls → Element 0 | Drop Chance  | `0.7`               |
+| Item Rolls → Element 0 | Min Quantity | `1`                 |
+| Item Rolls → Element 0 | Max Quantity | `1`                 |
+| Gold                   | Min Gold     | `5`                 |
+| Gold                   | Max Gold     | `15`                |
+| Experience             | Experience   | `25`                |
+
+---
 
 **Loot_SkeletonArcher:**
-- **Rolls** Size = 1
-  - Element 0: Item = `Item_BoneFragment`, Drop Chance = `0.7`, Qty 1–1
-- **Min Gold** = `8`, **Max Gold** = `18`
-- **Experience** = `30`
+
+| Section                | Field        | Value               |
+| ---------------------- | ------------ | ------------------- |
+| Item Rolls             | Rolls Size   | `1`                 |
+| Item Rolls → Element 0 | Item         | `Item_BoneFragment` |
+| Item Rolls → Element 0 | Drop Chance  | `0.7`               |
+| Item Rolls → Element 0 | Min Quantity | `1`                 |
+| Item Rolls → Element 0 | Max Quantity | `1`                 |
+| Gold                   | Min Gold     | `8`                 |
+| Gold                   | Max Gold     | `18`                |
+| Experience             | Experience   | `30`                |
+
+---
 
 **Loot_ArmoredKnight:**
-- **Rolls** Size = 2
-  - Element 0: Item = `Item_HealthPotion`, Drop Chance = `0.5`, Qty 1–1
-  - Element 1: Item = `Item_BoneFragment`, Drop Chance = `1.0`, Qty 1–2
-- **Min Gold** = `20`, **Max Gold** = `40`
-- **Experience** = `60`
 
-**Loot_UndeadWarlord:**
-- **Rolls** Size = 3
-  - Element 0: Item = `Item_IronSword`, Drop Chance = `0.5`, Qty 1–1
-  - Element 1: Item = `Item_IronPistol`, Drop Chance = `0.5`, Qty 1–1
-  - Element 2: Item = `Item_HealthPotion`, Drop Chance = `1.0`, Qty 3–3
-- **Min Gold** = `200`, **Max Gold** = `400`
-- **Experience** = `300`
+| Section                | Field        | Value               |
+| ---------------------- | ------------ | ------------------- |
+| Item Rolls             | Rolls Size   | `2`                 |
+| Item Rolls → Element 0 | Item         | `Item_HealthPotion` |
+| Item Rolls → Element 0 | Drop Chance  | `0.5`               |
+| Item Rolls → Element 0 | Min Quantity | `1`                 |
+| Item Rolls → Element 0 | Max Quantity | `1`                 |
+| Item Rolls → Element 1 | Item         | `Item_BoneFragment` |
+| Item Rolls → Element 1 | Drop Chance  | `1.0`               |
+| Item Rolls → Element 1 | Min Quantity | `1`                 |
+| Item Rolls → Element 1 | Max Quantity | `2`                 |
+| Gold                   | Min Gold     | `20`                |
+| Gold                   | Max Gold     | `40`                |
+| Experience             | Experience   | `60`                |
 
-**Loot_BasicChest** (Zone 2, 4 chest contents):
-- **Rolls** Size = 2
-  - Element 0: Item = `Item_HealthPotion`, Drop Chance = `1.0`, Qty 2–4
-  - Element 1: Item = `Item_BoneFragment`, Drop Chance = `1.0`, Qty 3–6
-- **Min Gold** = `50`, **Max Gold** = `120`
-- **Experience** = `0` (chests don't grant EXP)
+---
+
+**Loot_UndeadWarlord** (boss):
+
+| Section                | Field        | Value               |
+| ---------------------- | ------------ | ------------------- |
+| Item Rolls             | Rolls Size   | `3`                 |
+| Item Rolls → Element 0 | Item         | `Item_IronSword`    |
+| Item Rolls → Element 0 | Drop Chance  | `0.5`               |
+| Item Rolls → Element 0 | Min Quantity | `1`                 |
+| Item Rolls → Element 0 | Max Quantity | `1`                 |
+| Item Rolls → Element 1 | Item         | `Item_IronPistol`   |
+| Item Rolls → Element 1 | Drop Chance  | `0.5`               |
+| Item Rolls → Element 1 | Min Quantity | `1`                 |
+| Item Rolls → Element 1 | Max Quantity | `1`                 |
+| Item Rolls → Element 2 | Item         | `Item_HealthPotion` |
+| Item Rolls → Element 2 | Drop Chance  | `1.0`               |
+| Item Rolls → Element 2 | Min Quantity | `3`                 |
+| Item Rolls → Element 2 | Max Quantity | `3`                 |
+| Gold                   | Min Gold     | `200`               |
+| Gold                   | Max Gold     | `400`               |
+| Experience             | Experience   | `300`               |
+
+_Note:_ both weapon rows are 50% drop chance and roll independently. So a Warlord kill might drop just sword, just pistol, both, or neither — plus 3 potions guaranteed. If you want guaranteed weapon drop, set both Drop Chances to `1.0`.
+
+---
+
+**Loot_BasicChest** (Zone 2 + Zone 4 chests):
+
+| Section                | Field        | Value                        |
+| ---------------------- | ------------ | ---------------------------- |
+| Item Rolls             | Rolls Size   | `2`                          |
+| Item Rolls → Element 0 | Item         | `Item_HealthPotion`          |
+| Item Rolls → Element 0 | Drop Chance  | `1.0`                        |
+| Item Rolls → Element 0 | Min Quantity | `2`                          |
+| Item Rolls → Element 0 | Max Quantity | `4`                          |
+| Item Rolls → Element 1 | Item         | `Item_BoneFragment`          |
+| Item Rolls → Element 1 | Drop Chance  | `1.0`                        |
+| Item Rolls → Element 1 | Min Quantity | `3`                          |
+| Item Rolls → Element 1 | Max Quantity | `6`                          |
+| Gold                   | Min Gold     | `50`                         |
+| Gold                   | Max Gold     | `120`                        |
+| Experience             | Experience   | `0` (chests don't grant EXP) |
+
+---
 
 **Loot_BossChest** (Zone 5 post-boss):
-- **Rolls** Size = 3
-  - Element 0: Item = `Item_HealthPotion`, Drop Chance = `1.0`, Qty 5–5
-  - Element 1: Item = `Item_StaminaTonic`, Drop Chance = `1.0`, Qty 3–3
-  - Element 2: Item = `Item_BoneFragment`, Drop Chance = `1.0`, Qty 8–10
-- **Min Gold** = `100`, **Max Gold** = `200`
-- **Experience** = `0`
+
+| Section                | Field        | Value               |
+| ---------------------- | ------------ | ------------------- |
+| Item Rolls             | Rolls Size   | `3`                 |
+| Item Rolls → Element 0 | Item         | `Item_HealthPotion` |
+| Item Rolls → Element 0 | Drop Chance  | `1.0`               |
+| Item Rolls → Element 0 | Min Quantity | `5`                 |
+| Item Rolls → Element 0 | Max Quantity | `5`                 |
+| Item Rolls → Element 1 | Item         | `Item_StaminaTonic` |
+| Item Rolls → Element 1 | Drop Chance  | `1.0`               |
+| Item Rolls → Element 1 | Min Quantity | `3`                 |
+| Item Rolls → Element 1 | Max Quantity | `3`                 |
+| Item Rolls → Element 2 | Item         | `Item_BoneFragment` |
+| Item Rolls → Element 2 | Drop Chance  | `1.0`               |
+| Item Rolls → Element 2 | Min Quantity | `8`                 |
+| Item Rolls → Element 2 | Max Quantity | `10`                |
+| Gold                   | Min Gold     | `100`               |
+| Gold                   | Max Gold     | `200`               |
+| Experience             | Experience   | `0`                 |
+
+---
+
+**Sub-step 8c-3: Verify each LootTable saved correctly**
+
+After filling each one, click somewhere else in the Project window then click back on the asset. The Inspector should show the values you entered persist. If anything reverts to default after clicking off, that asset isn't being saved — check that you're not currently in Play mode (assets don't save during Play).
 
 ### 8d — Assign loot tables to enemies
 
 For each enemy prefab in `Assets/_Project/Enemies/Prefabs/`:
+
 1. Open the prefab. Click the root.
 2. Inspector → look for the **Loot Table** field on the enemy script (Skeleton Soldier / Skeleton Archer / Armored Knight).
 3. Drag the matching Loot_X.asset into the field.
 4. Save prefab.
 
 For the boss in your dungeon scene:
+
 1. Open `3_Dungeon1.unity`. Click `UndeadWarlord` in Hierarchy.
 2. Inspector → **Undead Warlord** component → **Loot Table** field.
 3. Drag `Loot_UndeadWarlord.asset` in.
@@ -1747,15 +1871,15 @@ For each chest:
 
 ### 8g — Tuning + extending
 
-| Goal | Knob |
-|---|---|
-| More gold per kill | Bump `Min Gold` / `Max Gold` on the LootTable. |
-| Faster leveling | Lower `BaseExpPerLevel` constant in `ExperienceSystem.cs` (currently 100). |
-| Linear curve instead of exponential | Replace `Mathf.Pow(2, currentLevel - 1)` in `ExperienceRequired` with `currentLevel`. |
-| Bigger stat gain per level | Bump `maxHpPerLevel` / `maxStaminaPerLevel` on ExperienceSystem in Inspector. |
-| Bosses guaranteed-drop a specific weapon | Set Drop Chance = `1.0` on that row, and 0 on other weapon rows. |
-| Auto-pickup items (no F key needed) | In `ItemPickup.cs`, add `OnTriggerEnter` that calls `OnInteract` automatically. |
-| Drops persist between sessions | Track placed pickups in a list, serialize their positions/contents to a third save file. (Phase 2 work.) |
+| Goal                                     | Knob                                                                                                     |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| More gold per kill                       | Bump `Min Gold` / `Max Gold` on the LootTable.                                                           |
+| Faster leveling                          | Lower `BaseExpPerLevel` constant in `ExperienceSystem.cs` (currently 100).                               |
+| Linear curve instead of exponential      | Replace `Mathf.Pow(2, currentLevel - 1)` in `ExperienceRequired` with `currentLevel`.                    |
+| Bigger stat gain per level               | Bump `maxHpPerLevel` / `maxStaminaPerLevel` on ExperienceSystem in Inspector.                            |
+| Bosses guaranteed-drop a specific weapon | Set Drop Chance = `1.0` on that row, and 0 on other weapon rows.                                         |
+| Auto-pickup items (no F key needed)      | In `ItemPickup.cs`, add `OnTriggerEnter` that calls `OnInteract` automatically.                          |
+| Drops persist between sessions           | Track placed pickups in a list, serialize their positions/contents to a third save file. (Phase 2 work.) |
 
 ## What's NOT in place yet (next milestones)
 

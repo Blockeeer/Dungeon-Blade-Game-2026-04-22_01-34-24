@@ -172,6 +172,7 @@ MonoBehaviour:
   flashColor: {r: 1, g: 0, b: 0, a: 1}
   flashDuration: 0.08
   deathFadeDelay: 2
+  lootTable: {fileID: 11400000, guid: d63135d98680edd498958fe2b980e6a1, type: 2}
   arrowPrefab: {fileID: 8929440112338358075, guid: bcce91676003213409a55f58fa007076,
     type: 3}
   shootOrigin: {fileID: 9199810622643065656}
